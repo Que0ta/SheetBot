@@ -1,0 +1,8 @@
+pyTelegramBotAPI
+gspread
+google-auth
+python-dotenv
+Flask
+requests
+gunicorn
+waitress
