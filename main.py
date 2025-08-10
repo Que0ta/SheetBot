@@ -12,7 +12,7 @@ SECRETO = os.getenv('boomba')
 
 app = Flask(__name__)
 
-@app.route('/' + TOKEN, methods=['POST'])
+@app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
 def get_message():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
@@ -20,7 +20,7 @@ def get_message():
 @app.route('/')
 def webhook():
     bot.remove_webhook()
-    bot.set_webhook(url='https://tele-check.onrender.com/' + TOKEN)  # Replace with your Render app name!
+    bot.set_webhook(url='https://tele-check.onrender.com/' + TELEGRAM_TOKEN)  # Replace with your Render app name!
     return "Webhook set!", 200
 
 
