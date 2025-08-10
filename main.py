@@ -48,8 +48,15 @@ def start_message(message):
                      "\n\n"
                      "Приклад: "
                      "Петренко Іван, Коваль Марія, КГ_Сб18, 12.08.2025 15:00, check, допрацювання, Іваненко Ігор; Петренко Оксана; Сидоренко Ліна")
-@bot.message_handler(func=lambda m: "," in m.text)
+
+
+
+@bot.message_handler(func=lambda m: True)
 def handle_data(message):
+    if "," not in message.text:
+        bot.send_message(message.chat.id, "⚠ Формат повідомлення повинен містити коми: Викладач, Учень, Група, Дата та час ...")
+        return
+
     lines = message.text.strip().splitlines()
     responses = []
 
@@ -68,8 +75,7 @@ def handle_data(message):
 
     for line_number, line in enumerate(lines, start=1):
         try:
-            data = [x.strip() for x in line.split(",")]
-
+            data = [x.strip() for x in line.split(",")] 
             if len(data) < 4:
                 responses.append(f"Рядок {line_number}: ⚠ Формат: Викладач, Учень, Група, Дата та час [, check/uncheck, причина [, учні через ;]]")
                 continue
@@ -105,7 +111,6 @@ def handle_data(message):
             else:
                 max_row += 1
                 row = max_row
-
             # Записуємо дані
             sheet.update_cell(row, 1, data_main[0])
             sheet.update_cell(row, 2, data_main[1])
