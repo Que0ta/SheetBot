@@ -72,18 +72,19 @@ TABLES = {
     "Проведені відпрацювання": {
         "sheet_id": table1_id,  # ID першого Google Sheets
         "gid": table1,
+        "title": "Відпрацювання",   # ← fallback назва
         "type": "table1"
     },
     "Інша таблиця": {
         "sheet_id": table2_id,  # ID другого Google Sheets
         "gid": table2,
+        "title": "Test",   # ← fallback назва
         "type": "table2"
     }
 }
 
 # Зберігаємо вибір користувача (user_id -> table_name)
 user_table_choice = {}
-
 
 def get_user_sheet(user_id):
     # якщо користувач ще не вибрав — за замовчуванням Проведені відпрацювання
@@ -93,17 +94,28 @@ def get_user_sheet(user_id):
     # відкриваємо потрібний файл
     spreadsheet = client.open_by_key(table_info["sheet_id"])
 
-    # шукаємо потрібний аркуш по gid
+    # ==== 1. Шукаємо по gid ====
     sheet = None
     for ws in spreadsheet.worksheets():
         if ws.id == table_info["gid"]:
             sheet = ws
             break
+
+    # ==== 2. Якщо не знайшли — шукаємо по статичній назві (title) ====
+    if sheet is None and "title" in table_info:
+        try:
+            sheet = spreadsheet.worksheet(table_info["title"])
+        except Exception:
+            pass
+
+    # ==== 3. Якщо не знайдено ні по gid, ні по title ====
     if sheet is None:
-        raise Exception(f"Аркуш gid={table_info['gid']} у {table_name} не знайдено!")
+        raise Exception(
+            f"Аркуш gid={table_info['gid']} "
+            f"(title={table_info.get('title')}) у {table_name} не знайдено!"
+        )
 
     return sheet, table_info["type"], table_name
-
 
 
 @bot.message_handler(commands=['start'])
