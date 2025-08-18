@@ -1,18 +1,27 @@
 import telebot
-import gspread, os, requests
+import gspread, os
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
+from telebot import *
 from flask import Flask, request
 
+# ==== LOAD ENV ====
 load_dotenv()
-# ==== CONFIG ====
 TELEGRAM_TOKEN = os.getenv('Tg_K')
-SHEET_ID = os.getenv('SHEETY')
 SECRETO = os.getenv('boomba')
+
+# ==== TELEGRAM BOT ====
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+
+table1 = os.getenv('table1')
+table2 = os.getenv('table2')
+
+table1_id = os.getenv('table1_KEY')
+table2_id = os.getenv('table2_KEY')
 
 app = Flask(__name__)
 
-@app.route('/' + TOKEN, methods=['POST'])
+@app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
 def get_message():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
@@ -20,7 +29,7 @@ def get_message():
 @app.route('/')
 def webhook():
     bot.remove_webhook()
-    bot.set_webhook(url='https://tele-check.onrender.com/' + TOKEN)  # Replace with your Render app name!
+    bot.set_webhook(url='https://sheetbot-mxhm.onrender.com/' + TELEGRAM_TOKEN)  # Replace with your Render app name!
     return "Webhook set!", 200
 
 
@@ -29,146 +38,198 @@ scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
+
 creds = Credentials.from_service_account_file(SECRETO, scopes=scope)
 client = gspread.authorize(creds)
-sheet = client.open_by_key(SHEET_ID).sheet1
 
-# ==== TELEGRAM BOT ====
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
+# ==== TWO TABLES (DIFFERENT FILES + FORMATS) ====
+TABLES = {
+    "Проведені відпрацювання": {
+        "sheet_id": table1_id,  # ID першого Google Sheets
+        "gid": table1,
+        "type": "table1"
+    },
+    "Інша таблиця": {
+        "sheet_id": table2_id,  # ID другого Google Sheets
+        "gid": table2,
+        "type": "table2"
+    }
+}
+
+# Зберігаємо вибір користувача (user_id -> table_name)
+user_table_choice = {}
+
+
+def get_user_sheet(user_id):
+    # якщо користувач ще не вибрав — за замовчуванням Проведені відпрацювання
+    table_name = user_table_choice.get(user_id, "Проведені відпрацювання")
+    table_info = TABLES[table_name]
+
+    # відкриваємо потрібний файл
+    spreadsheet = client.open_by_key(table_info["sheet_id"])
+
+    # шукаємо потрібний аркуш по gid
+    sheet = None
+    for ws in spreadsheet.worksheets():
+        if ws.id == table_info["gid"]:
+            sheet = ws
+            break
+    if sheet is None:
+        raise Exception(f"Аркуш gid={table_info['gid']} у {table_name} не знайдено!")
+
+    return sheet, table_info["type"], table_name
+
+
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
     bot.send_message(message.chat.id,
                      "Привіт! 👋\n"
-                     "Формат повідомлення:\n"
-                     "Викладач, Учень, Група, Дата та час\n\n"
-                     "✅ Поставити галочку з причиною: Викладач, Учень, Група, Дата та час, check, причина\n"
-                     "❌ Зняти галочку з причиною: Викладач, Учень, Група, Дата та час, uncheck, причина\n"
-                     "📌 Останній параметр *необов'язковий* — к-сть дітей відпрацювання (якщо більше 2)."
-                     "\n\n"
-                     "Приклад: "
-                     "Петренко Іван, Коваль Марія, КГ_Сб18, 12.08.2025 15:00, check, допрацювання, Іваненко Ігор; Петренко Оксана; Сидоренко Ліна")
-@bot.message_handler(func=lambda m: "," in m.text)
-def handle_data(message):
-    lines = message.text.strip().splitlines()
+                     "Використай /table щоб обрати таблицю.\n"
+                     "📌 Проведені відпрацювання → формат: Викладач, Учень, Дата, Час [, check/uncheck, причина, коментар, причина_годинного]\n"
+                     "📌 Інша таблиця → формат: Викладач, Учень, Група, Дата та час [, check/uncheck, причина [, учні через ;]]")
+
+
+# ==== TABLE SELECTION ====
+@bot.message_handler(commands=['table'])
+def choose_table(message):
+    keyboard = types.InlineKeyboardMarkup()
+    for name in TABLES.keys():
+        keyboard.add(types.InlineKeyboardButton(text=name, callback_data=f"choose_{name}"))
+    bot.send_message(message.chat.id, "📊 Оберіть таблицю для запису:", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("choose_"))
+def callback_choose_table(call):
+    table_name = call.data.replace("choose_", "")
+    if table_name not in TABLES:
+        bot.answer_callback_query(call.id, "❌ Таблиця не знайдена")
+        return
+
+    user_table_choice[call.from_user.id] = table_name
+    bot.answer_callback_query(call.id, f"Обрана {table_name}")
+    bot.send_message(call.message.chat.id, f"✅ Дані тепер будуть додаватись у: *{table_name}*", parse_mode="Markdown")
+
+
+# ==== HANDLERS FOR TABLE 1 & TABLE 2 ====
+def handle_table1(sheet, lines):
     responses = []
-
-    # Зчитуємо всі дані один раз перед циклом
     all_values = sheet.get_all_values()
-
-    # Зберемо індекси порожніх рядків, де перші 4 колонки пусті
-    empty_rows = []
+    empty_rows = [i + 1 for i, row in enumerate(all_values)
+                  if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
     max_row = len(all_values)
-
-    for i, row_values in enumerate(all_values, start=1):
-        if len(row_values) < 4 or all(v.strip() == "" for v in row_values[:4]):
-            empty_rows.append(i)
-
-    next_row_to_use = 0  # Індекс в empty_rows
+    next_empty_index = 0
 
     for line_number, line in enumerate(lines, start=1):
         try:
             data = [x.strip() for x in line.split(",")]
-
             if len(data) < 4:
-                responses.append(f"Рядок {line_number}: ⚠ Формат: Викладач, Учень, Група, Дата та час [, check/uncheck, причина [, учні через ;]]")
+                responses.append(f"Рядок {line_number}: ⚠ Формат: Викладач, Учень, Дата, Час ...")
                 continue
 
-            checkbox_action = None
-            reason = ""
-            students_list = ""
+            teacher, student, date, time = data[:4]
+            checkbox_value = None
+            reason_not_happened = ""
+            comment_students = ""
+            reason_hourly = ""
 
             if len(data) >= 5:
-                last = data[4].lower()
-                if last in ("check", "uncheck"):
-                    checkbox_action = last
-                    data_main = data[:4]
-
-                    if len(data) > 5:
-                        reason = data[5]
-
-                    if len(data) > 6:
-                        students_list = data[6]
+                if data[4].lower() in ("check", "uncheck"):
+                    checkbox_value = True if data[4].lower() == "check" else False
+                    if len(data) > 5: reason_not_happened = data[5]
+                    if len(data) > 6: comment_students = data[6]
+                    if len(data) > 7: reason_hourly = data[7]
                 else:
-                    data_main = data[:4]
-                    reason = data[4]
+                    reason_not_happened = data[4]
+                    if len(data) > 5: comment_students = data[5]
+                    if len(data) > 6: reason_hourly = data[6]
 
-                    if len(data) > 5:
-                        students_list = data[5]
-            else:
-                data_main = data[:4]
+            row_data = [teacher, student, date, time, checkbox_value, reason_not_happened, comment_students, reason_hourly]
 
-            # Визначаємо, який рядок використати
-            if next_row_to_use < len(empty_rows):
-                row = empty_rows[next_row_to_use]
-                next_row_to_use += 1
+            # Визначаємо рядок для запису: пустий рядок або наступний після max_row
+            if next_empty_index < len(empty_rows):
+                target_row = empty_rows[next_empty_index]
+                next_empty_index += 1
+                sheet.update(f"A{target_row}:H{target_row}", [row_data])
             else:
+                sheet.append_row(row_data)
+                target_row = max_row + 1
                 max_row += 1
-                row = max_row
 
-            # Записуємо дані
-            sheet.update_cell(row, 1, data_main[0])
-            sheet.update_cell(row, 2, data_main[1])
-            sheet.update_cell(row, 3, data_main[2])
-            sheet.update_cell(row, 4, data_main[3])
-
-            if checkbox_action == "check":
-                sheet.update_cell(row, 5, "TRUE")
-            elif checkbox_action == "uncheck":
-                sheet.update_cell(row, 5, "FALSE")
-
-            if reason:
-                sheet.update_cell(row, 6, reason)
-
-            if students_list:
-                sheet.update_cell(row, 8, students_list)
-
-            responses.append(f"Рядок {line_number}: ✅ Додано у рядок {row}")
+            responses.append(f"Рядок {line_number}: ✅ Додано у рядок {target_row}")
 
         except Exception as e:
             responses.append(f"Рядок {line_number}: ❌ Помилка: {e}")
 
-    bot.send_message(message.chat.id, "\n".join(responses))
+    return responses
 
 
-@bot.message_handler(commands=['check'])
-def check_checkbox(message):
-    try:
-        parts = message.text.split(maxsplit=2)
-        if len(parts) < 2 or not parts[1].isdigit():
-            bot.send_message(message.chat.id, "⚠ Використання: /check <номер_рядка> [причина]")
-            return
+def handle_table2(sheet, lines):
+    responses = []
+    all_values = sheet.get_all_values()
+    empty_rows = [i + 1 for i, row in enumerate(all_values)
+                  if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
+    max_row = len(all_values)
+    next_empty_index = 0
 
-        row = int(parts[1])
-        reason = parts[2] if len(parts) == 3 else ""
+    for line_number, line in enumerate(lines, start=1):
+        try:
+            data = [x.strip() for x in line.split(",")]
+            if len(data) < 4:
+                responses.append(f"Рядок {line_number}: ⚠ Формат: Викладач, Учень, Група, Дата та час ...")
+                continue
 
-        sheet.update_cell(row, 5, "TRUE")  # Галочка
-        if reason:
-            sheet.update_cell(row, 6, reason)  # Причина
+            teacher, student, group, datetime_val = data[:4]
+            checkbox_value = None
+            reason = ""
+            students_list = ""
 
-        bot.send_message(message.chat.id, f"✅ Галочка у рядку {row} поставлена!\nПричина: {reason or 'немає'}")
-    except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Помилка: {e}")
+            if len(data) >= 5:
+                if data[4].lower() in ("check", "uncheck"):
+                    checkbox_value = True if data[4].lower() == "check" else False
+                    if len(data) > 5: reason = data[5]
+                    if len(data) > 6: students_list = data[6]
+                else:
+                    reason = data[4]
+                    if len(data) > 5: students_list = data[5]
+
+            # Prepare full row: leave empty column 7 to match original format
+            row_data = [teacher, student, group, datetime_val, checkbox_value, reason, "", students_list]
+
+            # Determine row to write: first empty row or append at the bottom
+            if next_empty_index < len(empty_rows):
+                target_row = empty_rows[next_empty_index]
+                next_empty_index += 1
+                sheet.update(f"A{target_row}:H{target_row}", [row_data])
+            else:
+                sheet.append_row(row_data)
+                target_row = max_row + 1
+                max_row += 1
+
+            responses.append(f"Рядок {line_number}: ✅ Додано у рядок {target_row}")
+
+        except Exception as e:
+            responses.append(f"Рядок {line_number}: ❌ Помилка: {e}")
+
+    return responses
 
 
-@bot.message_handler(commands=['uncheck'])
-def uncheck_checkbox(message):
-    try:
-        parts = message.text.split(maxsplit=2)
-        if len(parts) < 2 or not parts[1].isdigit():
-            bot.send_message(message.chat.id, "⚠ Використання: /uncheck <номер_рядка> [причина]")
-            return
+# ==== UNIVERSAL HANDLER ====
+@bot.message_handler(func=lambda m: True)
+def handle_data(message):
+    if "," not in message.text:
+        bot.send_message(message.chat.id, "⚠ Повідомлення повинно містити коми!")
+        return
 
-        row = int(parts[1])
-        reason = parts[2] if len(parts) == 3 else ""
+    sheet, table_type, table_name = get_user_sheet(message.from_user.id)
+    lines = message.text.strip().splitlines()
 
-        sheet.update_cell(row, 5, "FALSE")  # Зняти галочку
-        if reason:
-            sheet.update_cell(row, 6, reason)  # Причина
+    if table_type == "table1":
+        responses = handle_table1(sheet, lines)
+    else:
+        responses = handle_table2(sheet, lines)
 
-        bot.send_message(message.chat.id, f"❌ Галочка у рядку {row} знята!\nПричина: {reason or 'немає'}")
-    except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Помилка: {e}")
+    bot.send_message(message.chat.id, f"📊 ({table_name})\n" + "\n".join(responses))
 
 
 if __name__ == "__main__":
