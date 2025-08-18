@@ -4,6 +4,31 @@ from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from telebot import *
 from flask import Flask, request
+import traceback
+
+def safe_handler(func):
+    def wrapper(message_or_call):
+        try:
+            return func(message_or_call)
+        except Exception as e:
+            chat_id = None
+            # якщо це message handler
+            if hasattr(message_or_call, "chat"):
+                chat_id = message_or_call.chat.id
+            # якщо це callback handler
+            elif hasattr(message_or_call, "message"):
+                chat_id = message_or_call.message.chat.id
+
+            if chat_id:
+                bot.send_message(
+                    chat_id,
+                    f"❌ Помилка: {e}\n\n<pre>{traceback.format_exc()}</pre>",
+                    parse_mode="HTML"
+                )
+            else:
+                print("❌ Unhandled error (no chat_id):", e)
+                print(traceback.format_exc())
+    return wrapper
 
 # ==== LOAD ENV ====
 load_dotenv()
@@ -82,6 +107,7 @@ def get_user_sheet(user_id):
 
 
 @bot.message_handler(commands=['start'])
+@safe_handler
 def start_message(message):
     bot.send_message(message.chat.id,
                      "Привіт! 👋\n"
@@ -92,6 +118,7 @@ def start_message(message):
 
 # ==== TABLE SELECTION ====
 @bot.message_handler(commands=['table'])
+@safe_handler
 def choose_table(message):
     keyboard = types.InlineKeyboardMarkup()
     for name in TABLES.keys():
@@ -100,6 +127,7 @@ def choose_table(message):
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("choose_"))
+@safe_handler
 def callback_choose_table(call):
     table_name = call.data.replace("choose_", "")
     if table_name not in TABLES:
@@ -213,9 +241,9 @@ def handle_table2(sheet, lines):
 
     return responses
 
-
 # ==== UNIVERSAL HANDLER ====
 @bot.message_handler(func=lambda m: True)
+@safe_handler
 def handle_data(message):
     if "," not in message.text:
         bot.send_message(message.chat.id, "⚠ Повідомлення повинно містити коми!")
