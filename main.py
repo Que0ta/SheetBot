@@ -9,6 +9,18 @@ import threading
 
 sheet_lock = threading.Lock()  # global lock for sheet updates
 
+def checkHour(hour):
+    if hour == 21:
+        return 0
+    elif hour == 22:
+        return 1
+    elif hour == 23:
+        return 2
+    elif hour == 0:
+        return 3
+    else:
+        return hour
+
 def safe_handler(func):
     def wrapper(message_or_call):
         try:
@@ -126,11 +138,13 @@ def get_user_sheet(user_id):
 def start_message(message):
     import datetime
     date = datetime.datetime.now()
+    ukrH = checkHour(int(date.strftime("%H")))
+    ukrMin = date.strftime("%M")
     bot.send_message(message.chat.id,
                      "Привіт! 👋\n"
                      "Використай /table щоб обрати таблицю. Приклади повідомлень внизу =>\n"
                      "📌 Проведені відпрацювання → \n"
-                     f"Викладач, Прізвище та ім'я учня, {date.day}.{date.month}.{date.year}, {date.strftime("%H:%M")} , check,, індивідуальне заняття, пропуск >= 2 занять\n"
+                     f"Викладач, Прізвище та ім'я учня, {date.day}.{date.month}.{date.year}, {ukrH}:{ukrMin}, check,, індивідуальне заняття, пропуск >= 2 занять\n"
                      "\n"
                      "📌❗️ Тестова таблиця → \n"
                      "формат: Викладач, Учень, Група, Дата та час, check/uncheck, причина, учні через ;"
