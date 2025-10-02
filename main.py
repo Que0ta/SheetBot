@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 from telebot import *
 from flask import Flask, request
 import traceback
+import threading
+
+sheet_lock = threading.Lock()  # global lock for sheet updates
 
 def safe_handler(func):
     def wrapper(message_or_call):
@@ -36,7 +39,7 @@ TELEGRAM_TOKEN = os.getenv('Tg_K')
 SECRETO = os.getenv('boomba')
 
 # ==== TELEGRAM BOT ====
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
+bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=True, num_threads=4)
 
 table1 = os.getenv('table1')
 table2 = os.getenv('table2')
@@ -158,11 +161,6 @@ def callback_choose_table(call):
 # ==== HANDLERS FOR TABLE 1 & TABLE 2 ====
 def handle_table1(sheet, lines):
     responses = []
-    all_values = sheet.get_all_values()
-    empty_rows = [i + 1 for i, row in enumerate(all_values)
-                  if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
-    max_row = len(all_values)
-    next_empty_index = 0
 
     for line_number, line in enumerate(lines, start=1):
         try:
@@ -190,15 +188,18 @@ def handle_table1(sheet, lines):
 
             row_data = [teacher, student, date, time, checkbox_value, reason_not_happened, comment_students, reason_hourly]
 
-            # Визначаємо рядок для запису: пустий рядок або наступний після max_row
-            if next_empty_index < len(empty_rows):
-                target_row = empty_rows[next_empty_index]
-                next_empty_index += 1
-                sheet.update(f"A{target_row}:H{target_row}", [row_data])
-            else:
-                sheet.append_row(row_data)
-                target_row = max_row + 1
-                max_row += 1
+            # --- Thread-safe sheet update ---
+            with sheet_lock:
+                all_values = sheet.get_all_values()
+                empty_rows = [i + 1 for i, row in enumerate(all_values)
+                              if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
+                
+                if empty_rows:
+                    target_row = empty_rows[0]
+                    sheet.update(f"A{target_row}:H{target_row}", [row_data])
+                else:
+                    sheet.append_row(row_data)
+                    target_row = len(all_values) + 1
 
             responses.append(f"Рядок {line_number}: ✅ Додано у рядок {target_row}")
 
