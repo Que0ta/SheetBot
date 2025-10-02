@@ -159,6 +159,7 @@ def callback_choose_table(call):
 
 
 # ==== HANDLERS FOR TABLE 1 & TABLE 2 ====
+
 def handle_table1(sheet, lines):
     responses = []
 
@@ -188,18 +189,18 @@ def handle_table1(sheet, lines):
 
             row_data = [teacher, student, date, time, checkbox_value, reason_not_happened, comment_students, reason_hourly]
 
-            # --- Thread-safe sheet update ---
+            # --- Entire read + write inside the lock ---
             with sheet_lock:
                 all_values = sheet.get_all_values()
                 empty_rows = [i + 1 for i, row in enumerate(all_values)
                               if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
-                
+
                 if empty_rows:
                     target_row = empty_rows[0]
                     sheet.update(f"A{target_row}:H{target_row}", [row_data])
                 else:
                     sheet.append_row(row_data)
-                    target_row = len(all_values) + 1
+                    target_row = len(sheet.get_all_values())  # recalc bottom row inside lock
 
             responses.append(f"Рядок {line_number}: ✅ Додано у рядок {target_row}")
 
@@ -207,6 +208,7 @@ def handle_table1(sheet, lines):
             responses.append(f"Рядок {line_number}: ❌ Помилка: {e}")
 
     return responses
+
 
 
 def handle_table2(sheet, lines):
