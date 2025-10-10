@@ -138,13 +138,13 @@ def get_user_sheet(user_id):
 def start_message(message):
     import datetime
     date = datetime.datetime.now()
-    ukrH = checkHour(int(date.strftime("%H")))
+    ukrH = checkHour(int(date.strftime("%H"))+3)
     ukrMin = date.strftime("%M")
     bot.send_message(message.chat.id,
                      "Привіт! 👋\n"
                      "Використай /table щоб обрати таблицю. Приклади повідомлень внизу =>\n"
                      "📌 Проведені відпрацювання → \n"
-                     f"Викладач, Прізвище та ім'я учня, {date.day}.{date.month}.{date.year}, {ukrH}:{ukrMin}, check,, індивідуальне заняття, пропуск >= 2 занять\n"
+                     f"Викладач, Прізвище та ім'я учня, {date.day}.{date.month}.{date.year}, {ukrH}:00, check,, індивідуальне заняття, пропуск >= 2 занять\n"
                      "\n"
                      "📌❗️ Тестова таблиця → \n"
                      "формат: Викладач, Учень, Група, Дата та час, check/uncheck, причина, учні через ;"
