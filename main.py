@@ -87,7 +87,7 @@ TABLES = {
     "Проведені відпрацювання": {
         "sheet_id": table1_id,  # ID першого Google Sheets
         "gid": table1,
-        "title": "Відпрацювання",   # ← fallback назва
+        "title": "Відпрацювання 2026",   # ← fallback назва
         "type": "table1"
     },
     "Інша таблиця": {
