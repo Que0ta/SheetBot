@@ -196,15 +196,15 @@ def notify_location_group(location, teacher, entries):
     lines_text = []
     for e in entries:
         line = f"👤 {e['student']} — {e['date']} {e['time']}"
-        if e['comment']:
-            line += f"\n   💬 {e['comment']}"
-        if e['reason']:
-            line += f"\n   📝 {e['reason']}"
+        # if e['comment']:
+        #     line += f"\n   💬 {e['comment']}"
+        # if e['reason']:
+        #     line += f"\n   📝 {e['reason']}"
         lines_text.append(line)
 
     text = (
         f"📍 {location}\n"
-        f"👨‍🏫 Викладач: {teacher}\n\n" +
+        f"Викладач: {teacher}\n\n" +
         "\n\n".join(lines_text)
     )
 
