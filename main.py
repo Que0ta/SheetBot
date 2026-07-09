@@ -203,7 +203,7 @@ def notify_location_group(location, teacher, entries):
         lines_text.append(line)
 
     text = (
-        f"📍 {location}\n"
+        # f"📍 {location}\n"
         f"Викладач: {teacher}\n\n" +
         "\n\n".join(lines_text)
     )
