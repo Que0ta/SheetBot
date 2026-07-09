@@ -171,7 +171,9 @@ def get_teacher_name(message):
 
 # Словник Локація -> chat_id групи, зберігається в .env:
 # LOCATION_GROUPS_MAP={"Кабінет 1": -1001234567890, "Кабінет 2": -1009876543210, "Онлайн": -1005555555555}
-LOCATION_GROUPS_MAP = json.loads(os.getenv('LOCATION_GROUPS_MAP', '{}'))
+combined_locations = json.loads(os.getenv('LOCATION_GROUPS_MAP1')) | json.loads(os.getenv('LOCATION_GROUPS_MAP2'))
+print(combined_locations)
+LOCATION_GROUPS_MAP = combined_locations
 # нормалізуємо ключі (без зайвих пробілів, без урахування регістру), щоб не залежати
 # від того, як саме користувач написав локацію в повідомленні
 LOCATION_GROUPS_MAP_NORMALIZED = {k.strip().lower(): v for k, v in LOCATION_GROUPS_MAP.items()}
