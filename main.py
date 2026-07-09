@@ -2,6 +2,7 @@ import telebot
 import gspread, os
 import json
 import re
+from collections import defaultdict
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from telebot import *
@@ -92,10 +93,10 @@ TABLES = {
         "title": "Відпрацювання 2026",   # ← fallback назва
         "type": "table1"
     },
-    "Основна таблиця": {
+    "Інша таблиця": {
         "sheet_id": table2_id,  # ID другого Google Sheets
         "gid": table2,
-        "title": "Годинні відпрацювання",   # ← fallback назва
+        "title": "Test",   # ← fallback назва
         "type": "table2"
     }
 }
@@ -164,6 +165,51 @@ def get_teacher_name(message):
         return TEACHERS_MAP[username]
     # fallback, якщо викладача немає в мапі
     return username or f"ID:{message.from_user.id}"
+
+
+# ==== TABLE 2: НОТИФІКАЦІЇ У ГРУПИ ЗА ЛОКАЦІЄЮ ====
+
+# Словник Локація -> chat_id групи, зберігається в .env:
+# LOCATION_GROUPS_MAP={"Кабінет 1": -1001234567890, "Кабінет 2": -1009876543210, "Онлайн": -1005555555555}
+LOCATION_GROUPS_MAP = json.loads(os.getenv('LOCATION_GROUPS_MAP', '{}'))
+# нормалізуємо ключі (без зайвих пробілів, без урахування регістру), щоб не залежати
+# від того, як саме користувач написав локацію в повідомленні
+LOCATION_GROUPS_MAP_NORMALIZED = {k.strip().lower(): v for k, v in LOCATION_GROUPS_MAP.items()}
+
+
+def get_group_chat_id(location):
+    return LOCATION_GROUPS_MAP_NORMALIZED.get(location.strip().lower())
+
+
+def notify_location_group(location, teacher, entries):
+    """
+    entries: список dict {student, date, time, comment, reason}
+    Відправляє одне зведене повідомлення у групу, що відповідає локації.
+    Якщо для локації немає групи в мапі — нічого не відправляє.
+    """
+    chat_id = get_group_chat_id(location)
+    if not chat_id:
+        return
+
+    lines_text = []
+    for e in entries:
+        line = f"👤 {e['student']} — {e['date']} {e['time']}"
+        if e['comment']:
+            line += f"\n   💬 {e['comment']}"
+        if e['reason']:
+            line += f"\n   📝 {e['reason']}"
+        lines_text.append(line)
+
+    text = (
+        f"📍 {location}\n"
+        f"👨‍🏫 Викладач: {teacher}\n\n" +
+        "\n\n".join(lines_text)
+    )
+
+    try:
+        bot.send_message(chat_id, text)
+    except Exception as e:
+        print(f"⚠ Не вдалось відправити повідомлення в групу '{location}' ({chat_id}): {e}")
 
 
 @bot.message_handler(commands=['start'])
@@ -279,6 +325,7 @@ def handle_table2(sheet, lines, message):
     """
     responses = []
     teacher = get_teacher_name(message)
+    entries_by_location = defaultdict(list)  # location -> list of entries (для нотифікацій у групи)
 
     with sheet_lock:
         all_values = sheet.get_all_values()
@@ -329,8 +376,22 @@ def handle_table2(sheet, lines, message):
 
                 responses.append(f"Рядок {line_number}: ✅ Додано у рядок {target_row}")
 
+                if location:
+                    entries_by_location[location].append({
+                        "student": student,
+                        "date": date_val,
+                        "time": time_val,
+                        "comment": comment_multiple,
+                        "reason": reason_hourly
+                    })
+
             except Exception as e:
                 responses.append(f"Рядок {line_number}: ❌ Помилка: {e}")
+
+    # Сповіщення у групи відправляємо ПІСЛЯ виходу з sheet_lock,
+    # щоб мережевий виклик до Telegram не тримав блокування таблиці
+    for location, entries in entries_by_location.items():
+        notify_location_group(location, teacher, entries)
 
     return responses
 
