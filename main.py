@@ -93,10 +93,10 @@ TABLES = {
         "title": "Відпрацювання 2026",   # ← fallback назва
         "type": "table1"
     },
-    "Інша таблиця": {
+    "Основна таблиця": {
         "sheet_id": table2_id,  # ID другого Google Sheets
         "gid": table2,
-        "title": "Test",   # ← fallback назва
+        "title": "Годинні відпрацювання",   # ← fallback назва
         "type": "table2"
     }
 }
