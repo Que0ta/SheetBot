@@ -1,6 +1,7 @@
 import telebot
 import gspread, os
-import json, datetime
+import json
+import datetime as dt
 import re
 from collections import defaultdict
 from google.oauth2.service_account import Credentials
@@ -345,7 +346,9 @@ def handle_table2(sheet, lines, message):
                         f"Рядок {line_number}: ⚠ Формат: Учень, Дата, Час, Локація, Коментар, Причина"
                     )
                     continue
-                date = datetime.datetime.now()
+                
+                date = dt.datetime.now()
+
                 student = data[0]
                 date_val = date.strftime("%d.%m.%Y")
                 time_val = data[1] if len(data) > 1 else ""
