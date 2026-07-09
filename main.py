@@ -237,7 +237,7 @@ def choose_table(message):
 
 @bot.message_handler(commands=['getdate'], chat_types=['private'])
 @safe_handler
-def choose_table(message):
+def getDate(message):
     import datetime
     date = datetime.datetime.now()
     ukrH = checkHour(int(date.strftime("%H"))+3)
