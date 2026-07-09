@@ -217,10 +217,6 @@ def notify_location_group(location, teacher, entries):
 @bot.message_handler(commands=['start'], chat_types=['private'])
 @safe_handler
 def start_message(message):
-    import datetime
-    date = datetime.datetime.now()
-    ukrH = checkHour(int(date.strftime("%H"))+3)
-    ukrMin = date.strftime("%M")
     bot.send_message(message.chat.id,
                      "Привіт! Бот оптимізований для Сокаля та Шептицького👋\n"
                      "Використай /table щоб обрати таблицю. Приклади повідомлень внизу =>\n"
@@ -238,6 +234,15 @@ def choose_table(message):
     for name in TABLES.keys():
         keyboard.add(types.InlineKeyboardButton(text=name, callback_data=f"choose_{name}"))
     bot.send_message(message.chat.id, "📊 Оберіть таблицю для запису:", reply_markup=keyboard)
+
+@bot.message_handler(commands=['getdate'], chat_types=['private'])
+@safe_handler
+def choose_table(message):
+    import datetime
+    date = datetime.datetime.now()
+    ukrH = checkHour(int(date.strftime("%H"))+3)
+    ukrMin = date.strftime("%M")
+    bot.send_message(message.chat.id, f"TEST: {ukrH}:{ukrMin}. DATE: {date.strftime("%d.%m.%Y")}")
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("choose_"))
