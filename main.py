@@ -1,5 +1,7 @@
 import telebot
 import gspread, os
+import json
+import re
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from telebot import *
@@ -90,10 +92,10 @@ TABLES = {
         "title": "Відпрацювання 2026",   # ← fallback назва
         "type": "table1"
     },
-    "Інша таблиця": {
+    "Основна таблиця": {
         "sheet_id": table2_id,  # ID другого Google Sheets
         "gid": table2,
-        "title": "Test",   # ← fallback назва
+        "title": "Годинні відпрацювання",   # ← fallback назва
         "type": "table2"
     }
 }
@@ -133,6 +135,37 @@ def get_user_sheet(user_id):
     return sheet, table_info["type"], table_name
 
 
+# ==== TABLE 2 HELPERS: MONTH NAME + TEACHER LOOKUP ====
+
+UKRAINIAN_MONTHS = {
+    1: "Січень", 2: "Лютий", 3: "Березень", 4: "Квітень",
+    5: "Травень", 6: "Червень", 7: "Липень", 8: "Серпень",
+    9: "Вересень", 10: "Жовтень", 11: "Листопад", 12: "Грудень"
+}
+
+def get_month_name(date_str):
+    """
+    Дістає номер місяця з рядка дати (наприклад '9.07.2026', '09/07', '9.07')
+    та повертає назву місяця українською.
+    """
+    match = re.search(r'\d{1,2}[./]\s*(\d{1,2})', date_str)
+    if match:
+        month_num = int(match.group(1))
+        return UKRAINIAN_MONTHS.get(month_num, "")
+    return ""
+
+# Словник telegram username -> ім'я викладача, зберігається в .env:
+# TEACHERS_MAP={"ivan_teacher":"Іван Петренко","olena_t":"Олена Ковальчук"}
+TEACHERS_MAP = json.loads(os.getenv('TEACHERS_MAP', '{}'))
+
+def get_teacher_name(message):
+    username = message.from_user.username
+    if username and username in TEACHERS_MAP:
+        return TEACHERS_MAP[username]
+    # fallback, якщо викладача немає в мапі
+    return username or f"ID:{message.from_user.id}"
+
+
 @bot.message_handler(commands=['start'])
 @safe_handler
 def start_message(message):
@@ -147,7 +180,8 @@ def start_message(message):
                      f"Викладач, Прізвище та ім'я учня, {date.day}.{date.month}.{date.year}, {ukrH}:00, check,, індивідуальне заняття, пропуск >= 2 занять\n"
                      "\n"
                      "📌❗️ Тестова таблиця → \n"
-                     "формат: Викладач, Учень, Група, Дата та час, check/uncheck, причина, учні через ;"
+                     "формат: Учень, Дата, Час, Локація, Коментар (якщо кілька учнів), Причина годинного відпрацювання\n"
+                     "❗️ Викладач та Місяць проставляються автоматично, Відбулось завжди TRUE."
                      "❗️ Виключно для тестування роботи бота!")
 
 
@@ -226,53 +260,77 @@ def handle_table1(sheet, lines):
     return responses
 
 
+def handle_table2(sheet, lines, message):
+    """
+    Формат повідомлення (через кому):
+    Учень, Дата, Час, Локація, Коментар (якщо кілька учнів), Причина годинного відпрацювання
 
-def handle_table2(sheet, lines):
+    Колонки в таблиці:
+    A - Місяць        -> автоматично з дати, словом українською
+    B - Викладач      -> автоматично за telegram username (TEACHERS_MAP в .env)
+    C - Учень         -> з повідомлення
+    D - Дата          -> з повідомлення
+    E - Час           -> з повідомлення
+    F - Локація       -> з повідомлення
+    G - Відбулось     -> завжди TRUE
+    H - Не відбулось  -> завжди пропускається (порожньо)
+    I - Коментар      -> з повідомлення (декілька учнів)
+    J - Причина       -> з повідомлення (причина годинного відпрацювання)
+    """
     responses = []
-    all_values = sheet.get_all_values()
-    empty_rows = [i + 1 for i, row in enumerate(all_values)
-                  if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
-    max_row = len(all_values)
-    next_empty_index = 0
+    teacher = get_teacher_name(message)
 
-    for line_number, line in enumerate(lines, start=1):
-        try:
-            data = [x.strip() for x in line.split(",")]
-            if len(data) < 4:
-                responses.append(f"Рядок {line_number}: ⚠ Формат: Викладач, Учень, Група, Дата та час ...")
-                continue
+    with sheet_lock:
+        all_values = sheet.get_all_values()
+        empty_rows = [i + 1 for i, row in enumerate(all_values)
+                      if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
+        max_row = len(all_values)
+        next_empty_index = 0
 
-            teacher, student, group, datetime_val = data[:4]
-            checkbox_value = None
-            reason = ""
-            students_list = ""
+        for line_number, line in enumerate(lines, start=1):
+            try:
+                data = [x.strip() for x in line.split(",")]
+                if len(data) < 3:
+                    responses.append(
+                        f"Рядок {line_number}: ⚠ Формат: Учень, Дата, Час, Локація, Коментар, Причина"
+                    )
+                    continue
 
-            if len(data) >= 5:
-                if data[4].lower() in ("check", "uncheck"):
-                    checkbox_value = True if data[4].lower() == "check" else False
-                    if len(data) > 5: reason = data[5]
-                    if len(data) > 6: students_list = data[6]
+                student = data[0]
+                date_val = data[1] if len(data) > 1 else ""
+                time_val = data[2] if len(data) > 2 else ""
+                location = data[3] if len(data) > 3 else ""
+                comment_multiple = data[4] if len(data) > 4 else ""
+                reason_hourly = data[5] if len(data) > 5 else ""
+
+                month_name = get_month_name(date_val)
+
+                row_data = [
+                    month_name,        # A - Місяць
+                    teacher,           # B - Викладач
+                    student,           # C - Прізвище та ім'я учня
+                    date_val,          # D - Дата
+                    time_val,          # E - Час
+                    location,          # F - Локація
+                    True,              # G - Відбулось (завжди TRUE)
+                    "",                # H - Не відбулось (завжди пропускається)
+                    comment_multiple,  # I - Коментар (декілька учнів)
+                    reason_hourly      # J - Причина годинного відпрацювання
+                ]
+
+                if next_empty_index < len(empty_rows):
+                    target_row = empty_rows[next_empty_index]
+                    next_empty_index += 1
+                    sheet.update(f"A{target_row}:J{target_row}", [row_data])
                 else:
-                    reason = data[4]
-                    if len(data) > 5: students_list = data[5]
+                    sheet.append_row(row_data)
+                    target_row = max_row + 1
+                    max_row += 1
 
-            # Prepare full row: leave empty column 7 to match original format
-            row_data = [teacher, student, group, datetime_val, checkbox_value, reason, "", students_list]
+                responses.append(f"Рядок {line_number}: ✅ Додано у рядок {target_row}")
 
-            # Determine row to write: first empty row or append at the bottom
-            if next_empty_index < len(empty_rows):
-                target_row = empty_rows[next_empty_index]
-                next_empty_index += 1
-                sheet.update(f"A{target_row}:H{target_row}", [row_data])
-            else:
-                sheet.append_row(row_data)
-                target_row = max_row + 1
-                max_row += 1
-
-            responses.append(f"Рядок {line_number}: ✅ Додано у рядок {target_row}")
-
-        except Exception as e:
-            responses.append(f"Рядок {line_number}: ❌ Помилка: {e}")
+            except Exception as e:
+                responses.append(f"Рядок {line_number}: ❌ Помилка: {e}")
 
     return responses
 
@@ -290,7 +348,7 @@ def handle_data(message):
     if table_type == "table1":
         responses = handle_table1(sheet, lines)
     else:
-        responses = handle_table2(sheet, lines)
+        responses = handle_table2(sheet, lines, message)
 
     bot.send_message(message.chat.id, f"📊 ({table_name})\n" + "\n".join(responses))
 
