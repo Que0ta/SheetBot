@@ -212,7 +212,7 @@ def notify_location_group(location, teacher, entries):
         print(f"⚠ Не вдалось відправити повідомлення в групу '{location}' ({chat_id}): {e}")
 
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start'], chat_types=['private'])
 @safe_handler
 def start_message(message):
     import datetime
@@ -232,7 +232,7 @@ def start_message(message):
 
 
 # ==== TABLE SELECTION ====
-@bot.message_handler(commands=['table'])
+@bot.message_handler(commands=['table'], chat_types=['private'])
 @safe_handler
 def choose_table(message):
     keyboard = types.InlineKeyboardMarkup()
@@ -396,7 +396,7 @@ def handle_table2(sheet, lines, message):
     return responses
 
 # ==== UNIVERSAL HANDLER ====
-@bot.message_handler(func=lambda m: True)
+@bot.message_handler(func=lambda m: True, chat_types=['private'])
 @safe_handler
 def handle_data(message):
     if "," not in message.text:
