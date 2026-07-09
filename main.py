@@ -1,6 +1,6 @@
 import telebot
 import gspread, os
-import json
+import json, datetime
 import re
 from collections import defaultdict
 from google.oauth2.service_account import Credentials
@@ -222,7 +222,7 @@ def start_message(message):
                      "Використай /table щоб обрати таблицю. Приклади повідомлень внизу =>\n"
                      
                      "📌❗️ Основна таблиця → \n"
-                     "формат: Учень, Дата, Час, Локація, Коментар (якщо кілька учнів), Причина годинного відпрацювання\n"
+                     "формат: Учень, Час, Локація, Коментар (якщо кілька учнів), Причина годинного відпрацювання\n"
                      "❗️ Викладач та Місяць проставляються автоматично (за username tg -- стосовно користування напишіть @serhiy_du)")
 
 
@@ -238,11 +238,10 @@ def choose_table(message):
 @bot.message_handler(commands=['getdate'], chat_types=['private'])
 @safe_handler
 def getDate(message):
-    import datetime
     date = datetime.datetime.now()
-    ukrH = checkHour(int(date.strftime("%H"))+3)
-    ukrMin = date.strftime("%M")
-    bot.send_message(message.chat.id, f"TEST: {ukrH}:{ukrMin}. DATE: {date.strftime("%d.%m.%Y")}")
+    # ukrH = checkHour(int(date.strftime("%H"))+3)
+    # ukrMin = date.strftime("%M")
+    bot.send_message(message.chat.id, f"DATE: {date.strftime("%d.%m.%Y")}")
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("choose_"))
@@ -346,13 +345,13 @@ def handle_table2(sheet, lines, message):
                         f"Рядок {line_number}: ⚠ Формат: Учень, Дата, Час, Локація, Коментар, Причина"
                     )
                     continue
-
+                date = datetime.datetime.now()
                 student = data[0]
-                date_val = data[1] if len(data) > 1 else ""
-                time_val = data[2] if len(data) > 2 else ""
-                location = data[3] if len(data) > 3 else ""
-                comment_multiple = data[4] if len(data) > 4 else ""
-                reason_hourly = data[5] if len(data) > 5 else ""
+                date_val = date.strftime("%d.%m.%Y")
+                time_val = data[1] if len(data) > 1 else ""
+                location = data[2] if len(data) > 2 else ""
+                comment_multiple = data[3] if len(data) > 3 else ""
+                reason_hourly = data[4] if len(data) > 4 else ""
 
                 month_name = get_month_name(date_val)
 
