@@ -205,6 +205,7 @@ def notify_location_group(location, teacher, entries):
 
     text = (
         # f"📍 {location}\n"
+        f"Проведено годинне відпрацювання✅\n"
         f"Викладач: {teacher}\n\n" +
         "\n\n".join(lines_text)
     )
