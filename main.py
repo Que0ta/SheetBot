@@ -335,9 +335,18 @@ def handle_table2(sheet, lines, message):
 
     with sheet_lock:
         all_values = sheet.get_all_values()
-        empty_rows = [i + 1 for i, row in enumerate(all_values)
-                      if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
-        max_row = len(all_values)
+        # empty_rows = [i + 1 for i, row in enumerate(all_values)
+        #               if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
+        empty_rows = []
+
+        for i, row in enumerate(all_values, start=1):
+            # Ensure row has at least 10 columns
+            padded = row + [""] * (10 - len(row))
+
+            # C:J are indices 2..9
+            if all(cell.strip() == "" for cell in padded[2:10]):
+                empty_rows.append(i)
+                max_row = len(all_values)
         next_empty_index = 0
 
         for line_number, line in enumerate(lines, start=1):
@@ -361,7 +370,7 @@ def handle_table2(sheet, lines, message):
                 month_name = get_month_name(date_val)
 
                 row_data = [
-                    month_name,        # A - Місяць
+                    month_name.lower(),        # A - Місяць
                     teacher,           # B - Викладач
                     student,           # C - Прізвище та ім'я учня
                     date_val,          # D - Дата
