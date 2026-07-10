@@ -336,17 +336,9 @@ def handle_table2(sheet, lines, message):
 
     with sheet_lock:
         all_values = sheet.get_all_values()
-        # empty_rows = [i + 1 for i, row in enumerate(all_values)
-        #               if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
-        empty_rows = []
+        empty_rows = [i + 1 for i, row in enumerate(all_values, start=2)
+                      if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
 
-        for i, row in enumerate(all_values, start=1):
-            # Ensure row has at least 10 columns
-            padded = row + [""] * (10 - len(row))
-
-            # C:J are indices 2..9
-            if all(cell.strip() == "" for cell in padded[2:10]):
-                empty_rows.append(i)
         max_row = len(all_values)
         next_empty_index = 0
 
