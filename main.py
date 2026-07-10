@@ -347,7 +347,7 @@ def handle_table2(sheet, lines, message):
             # C:J are indices 2..9
             if all(cell.strip() == "" for cell in padded[2:10]):
                 empty_rows.append(i)
-                max_row = len(all_values)
+        max_row = len(all_values)
         next_empty_index = 0
 
         for line_number, line in enumerate(lines, start=1):
