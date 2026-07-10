@@ -329,6 +329,7 @@ def handle_table2(sheet, lines, message):
     I - Коментар      -> з повідомлення (декілька учнів)
     J - Причина       -> з повідомлення (причина годинного відпрацювання)
     """
+    global max_row
     responses = []
     teacher = get_teacher_name(message)
     entries_by_location = defaultdict(list)  # location -> list of entries (для нотифікацій у групи)
