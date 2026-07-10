@@ -336,7 +336,7 @@ def handle_table2(sheet, lines, message):
 
     with sheet_lock:
         all_values = sheet.get_all_values()
-        empty_rows = [i + 1 for i, row in enumerate(all_values, start=2)
+        empty_rows = [i + 1 for i, row in enumerate(all_values, start=0)
                       if len(row) < 4 or all(v.strip() == "" for v in row[:4])]
 
         max_row = len(all_values)
